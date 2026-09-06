@@ -31,6 +31,12 @@ RUN echo "fs.file-max = 65535" > /etc/sysctl.conf \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
+# OIDC access lists need lua-resty-openidc (+ http/session/jwt deps) loadable
+# by the OpenResty binary in the base image. The base image already bundles
+# this rock set, but pin it explicitly so the release does not silently depend
+# on base-image contents; a no-op when already installed.
+RUN luarocks install lua-resty-openidc
+
 # s6 overlay
 COPY docker/scripts/install-s6 /tmp/install-s6
 RUN /tmp/install-s6 "${TARGETPLATFORM}" && rm -f /tmp/install-s6
