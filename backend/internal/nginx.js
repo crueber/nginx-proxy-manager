@@ -202,13 +202,20 @@ const internalNginx = {
 		}
 		debug(logger, `Generating ${nice_host_type} Config:`, JSON.stringify(hostForLog, null, 2));
 
-		if (host.access_list) {
-			host.access_list = internalOidcProvider.hydrateForNginx(host.access_list);
-		}
-
 		const renderEngine = utils.getRenderEngine();
 
 		return new Promise((resolve, reject) => {
+			// Hydrate OIDC providers inside the promise so decryption failures
+			// reject the promise instead of throwing synchronously to .map
+			// callers in bulkGenerateConfigs.
+			try {
+				if (host.access_list) {
+					host.access_list = internalOidcProvider.hydrateForNginx(host.access_list);
+				}
+			} catch (err) {
+				reject(err);
+				return;
+			}
 			let template = null;
 			const filename = internalNginx.getConfigName(nice_host_type, host.id);
 

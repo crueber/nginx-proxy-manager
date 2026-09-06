@@ -264,6 +264,12 @@ const internalOidcProvider = {
 	 */
 	resolveProviderIds: async (providerIds, scope) => {
 		const ids = normalizeProviderIds(providerIds);
+		// Defense-in-depth: API schema should reject garbage, but a non-empty
+		// raw list that normalizes to empty must not silently detach all
+		// providers — fail loudly instead.
+		if (Array.isArray(providerIds) && providerIds.length > 0 && ids.length === 0) {
+			throw new errs.ValidationError("One or more OIDC providers do not exist");
+		}
 		if (ids.length) {
 			const query = oidcProviderModel.query().whereIn("id", ids).andWhere("is_deleted", 0);
 			if (scope && scope.visibility !== "all") {

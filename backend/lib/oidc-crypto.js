@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 
+// Cached fallback key (see getKey). Module-scope on purpose: the fallback
+// inputs are static, so re-deriving per encrypt/decrypt only blocks the
+// event loop during bulk operations.
+let cachedFallbackKey = null;
+
 /**
  * Encryption helper for OIDC provider client secrets (at rest).
  *
@@ -29,7 +34,11 @@ const getKey = () => {
 	}
 	// Clearly-marked fallback: static built-in key, identical everywhere.
 	// NOT suitable for production. Set NPM_OIDC_SECRET_KEY instead.
-	return crypto.scryptSync("npm-oidc-fallback-key", "npm-oidc-salt", 32);
+	// Memoized so bulk config regeneration doesn't re-run scrypt per secret.
+	if (!cachedFallbackKey) {
+		cachedFallbackKey = crypto.scryptSync("npm-oidc-fallback-key", "npm-oidc-salt", 32);
+	}
+	return cachedFallbackKey;
 };
 
 const usingFallbackKey = () => {

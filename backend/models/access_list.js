@@ -93,7 +93,7 @@ class AccessList extends Model {
 					to: "oidc_provider.id",
 				},
 				modify: (qb) => {
-					qb.where("oidc_provider.is_deleted", 0);
+					qb.where("oidc_provider.is_deleted", 0).orderBy("oidc_provider.id", "ASC");
 				},
 			},
 			proxy_hosts: {

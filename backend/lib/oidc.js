@@ -16,7 +16,7 @@ const MAX_DISCOVERY_BYTES = 200000;
 const readCappedText = async (res) => {
 	if (!res.body?.getReader) {
 		const text = await res.text();
-		if (text.length > MAX_DISCOVERY_BYTES) {
+		if (Buffer.byteLength(text, "utf8") > MAX_DISCOVERY_BYTES) {
 			throw new Error("Discovery document exceeds size limit");
 		}
 		return text;
@@ -126,11 +126,10 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 
 	let lastError = null;
 	for (const url of candidates) {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 10000);
 		try {
-			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), 10000);
 			const res = await fetch(url, { signal: controller.signal });
-			clearTimeout(timeout);
 			if (!res.ok) {
 				lastError = new Error(`Discovery endpoint returned HTTP ${res.status}`);
 				continue;
@@ -158,6 +157,8 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 			return doc;
 		} catch (err) {
 			lastError = err;
+		} finally {
+			clearTimeout(timeout);
 		}
 	}
 	throw new errs.ValidationError(`OIDC discovery failed: ${lastError ? lastError.message : "unknown error"}`);
@@ -244,7 +245,12 @@ const hydrateForNginx = (accessList) => {
 		return accessList;
 	}
 	const hydrated = { ...accessList };
-	hydrated.oidc_providers = accessList.oidc_providers.map((provider) => {
+	// Deterministic provider order (first-provider-redirects): the model
+	// relation already orders by id, but sort here too so direct callers
+	// and tests get the same guarantee regardless of load path.
+	hydrated.oidc_providers = [...accessList.oidc_providers]
+		.sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
+		.map((provider) => {
 		const copy = _.omit(provider, ["client_secret_encrypted"]);
 		if (!provider.client_secret_encrypted) {
 			// No secret stored (e.g. IdP public client): render empty and let the IdP decide.
