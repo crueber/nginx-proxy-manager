@@ -10,6 +10,7 @@ import accessListClientModel from "../models/access_list_client.js";
 import proxyHostModel from "../models/proxy_host.js";
 import internalAuditLog from "./audit-log.js";
 import internalNginx from "./nginx.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const omissions = () => {
 	return ["is_deleted"];
@@ -59,12 +60,17 @@ const internalAccessList = {
 			});
 		}
 
+		// OIDC providers (any-of semantics)
+		if (typeof data.oidc_provider_ids !== "undefined") {
+			await internalOidcProvider.setProvidersForAccessList(row.id, data.oidc_provider_ids);
+		}
+
 		// re-fetch with expansions
 		const freshRow = await internalAccessList.get(
 			access,
 			{
 				id: data.id,
-				expand: ["owner", "items", "clients", "proxy_hosts.access_list.[clients,items]"],
+				expand: ["owner", "items", "clients", "oidc_providers", "proxy_hosts.access_list.[clients,items,oidc_providers]"],
 			},
 			true, // skip masking
 		);
@@ -165,6 +171,11 @@ const internalAccessList = {
 			}
 		}
 
+		// Check for OIDC providers and sync the association (empty array detaches all)
+		if (typeof data.oidc_provider_ids !== "undefined" && data.oidc_provider_ids) {
+			await internalOidcProvider.setProvidersForAccessList(data.id, data.oidc_provider_ids);
+		}
+
 		// Add to audit log
 		await internalAuditLog.add(access, {
 			action: "updated",
@@ -178,7 +189,7 @@ const internalAccessList = {
 			access,
 			{
 				id: data.id,
-				expand: ["owner", "items", "clients", "proxy_hosts.[certificate,access_list.[clients,items]]"],
+				expand: ["owner", "items", "clients", "oidc_providers", "proxy_hosts.[certificate,access_list.[clients,items,oidc_providers]]"],
 			},
 			true, // skip masking
 		);
@@ -213,7 +224,7 @@ const internalAccessList = {
 			.where("access_list.is_deleted", 0)
 			.andWhere("access_list.id", thisData.id)
 			.groupBy("access_list.id")
-			.allowGraph("[owner,items,clients,proxy_hosts.[certificate,access_list.[clients,items]]]")
+			.allowGraph("[owner,items,clients,oidc_providers,proxy_hosts.[certificate,access_list.[clients,items,oidc_providers]]]")
 			.first();
 
 		if (accessData.permission_visibility !== "all") {
@@ -319,7 +330,7 @@ const internalAccessList = {
 			})
 			.where("access_list.is_deleted", 0)
 			.groupBy("access_list.id")
-			.allowGraph("[owner,items,clients]")
+			.allowGraph("[owner,items,clients,oidc_providers]")
 			.orderBy("access_list.name", "ASC");
 
 		if (accessData.permission_visibility !== "all") {
@@ -386,6 +397,10 @@ const internalAccessList = {
 				list.items[idx].password = "";
 				return true;
 			});
+		}
+		// OIDC provider secrets are write-only: strip encrypted material from API output
+		if (list?.oidc_providers) {
+			return internalOidcProvider.sanitizeForApi(list);
 		}
 		return list;
 	},

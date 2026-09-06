@@ -29,6 +29,10 @@
 			"description": "Endpoints related to Access Lists"
 		},
 		{
+			"name": "oidc-providers",
+			"description": "Endpoints related to OIDC Providers"
+		},
+		{
 			"name": "certificates",
 			"description": "Endpoints related to Certificates"
 		},
@@ -98,6 +102,30 @@
 			},
 			"delete": {
 				"$ref": "./paths/nginx/access-lists/listID/delete.json"
+			}
+		},
+		"/nginx/oidc-providers": {
+			"get": {
+				"$ref": "./paths/nginx/oidc-providers/get.json"
+			},
+			"post": {
+				"$ref": "./paths/nginx/oidc-providers/post.json"
+			}
+		},
+		"/nginx/oidc-providers/{providerID}": {
+			"get": {
+				"$ref": "./paths/nginx/oidc-providers/providerID/get.json"
+			},
+			"put": {
+				"$ref": "./paths/nginx/oidc-providers/providerID/put.json"
+			},
+			"delete": {
+				"$ref": "./paths/nginx/oidc-providers/providerID/delete.json"
+			}
+		},
+		"/nginx/oidc-providers/{providerID}/test": {
+			"post": {
+				"$ref": "./paths/nginx/oidc-providers/providerID/test.json"
 			}
 		},
 		"/nginx/certificates": {

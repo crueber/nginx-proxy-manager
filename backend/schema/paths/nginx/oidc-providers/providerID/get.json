@@ -1,0 +1,37 @@
+{
+	"operationId": "getOidcProvider",
+	"summary": "Get an OIDC Provider",
+	"tags": ["oidc-providers"],
+	"security": [
+		{
+			"bearerAuth": [
+				"access_lists.view"
+			]
+		}
+	],
+	"parameters": [
+		{
+			"in": "path",
+			"name": "providerID",
+			"description": "OIDC Provider ID",
+			"schema": {
+				"type": "integer",
+				"minimum": 1
+			},
+			"required": true,
+			"example": 1
+		}
+	],
+	"responses": {
+		"200": {
+			"description": "200 response",
+			"content": {
+				"application/json": {
+					"schema": {
+						"$ref": "../../../../components/oidc-provider-object.json"
+					}
+				}
+			}
+		}
+	}
+}

@@ -5,6 +5,7 @@ import _ from "lodash";
 import errs from "../lib/error.js";
 import utils from "../lib/utils.js";
 import { debug, nginx as logger } from "../logger.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,7 +193,17 @@ const internalNginx = {
 		const host = JSON.parse(JSON.stringify(host_row));
 		const nice_host_type = internalNginx.getFileFriendlyHostType(host_type);
 
-		debug(logger, `Generating ${nice_host_type} Config:`, JSON.stringify(host, null, 2));
+		// Hydrate OIDC providers for template rendering (decrypts client secrets).
+		// This must happen after the debug log below so secrets never reach logs.
+		const hostForLog = JSON.parse(JSON.stringify(host));
+		if (hostForLog.access_list) {
+			hostForLog.access_list = internalOidcProvider.sanitizeForApi(hostForLog.access_list);
+		}
+		debug(logger, `Generating ${nice_host_type} Config:`, JSON.stringify(hostForLog, null, 2));
+
+		if (host.access_list) {
+			host.access_list = internalOidcProvider.hydrateForNginx(host.access_list);
+		}
 
 		const renderEngine = utils.getRenderEngine();
 
@@ -251,7 +262,13 @@ const internalNginx = {
 					.parseAndRender(template, host)
 					.then((config_text) => {
 						fs.writeFileSync(filename, config_text, { encoding: "utf8" });
-						debug(logger, "Wrote config:", filename, config_text);
+						// Never log OIDC client secrets that are embedded in the rendered config
+						debug(
+							logger,
+							"Wrote config:",
+							filename,
+							config_text.replace(/(client_secret\s*=\s*")[^"]*(")/g, "$1[redacted]$2"),
+						);
 
 						// Restore locations array
 						host.locations = origLocations;

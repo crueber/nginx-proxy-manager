@@ -1,0 +1,61 @@
+{
+	"type": "object",
+	"description": "OIDC Provider object. The client secret is write-only and never serialized.",
+	"required": ["id", "created_on", "modified_on", "owner_user_id", "name", "discovery_url", "client_id", "scopes", "username_claim", "has_secret", "meta"],
+	"properties": {
+		"id": {
+			"$ref": "../common.json#/properties/id"
+		},
+		"created_on": {
+			"$ref": "../common.json#/properties/created_on"
+		},
+		"modified_on": {
+			"$ref": "../common.json#/properties/modified_on"
+		},
+		"owner_user_id": {
+			"$ref": "../common.json#/properties/user_id"
+		},
+		"name": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 255,
+			"example": "Keycloak"
+		},
+		"discovery_url": {
+			"type": "string",
+			"format": "uri",
+			"example": "https://auth.example.com/realms/npm"
+		},
+		"client_id": {
+			"type": "string",
+			"minLength": 1,
+			"example": "npm"
+		},
+		"client_secret": {
+			"type": "string",
+			"description": "Write-only. Supply to set or rotate; never returned by the API.",
+			"example": "super-secret-value"
+		},
+		"has_secret": {
+			"type": "boolean",
+			"description": "True when a secret is stored (read-only indicator).",
+			"example": true
+		},
+		"scopes": {
+			"type": "string",
+			"example": "openid email profile"
+		},
+		"username_claim": {
+			"type": "string",
+			"example": "email"
+		},
+		"groups_claim": {
+			"type": ["string", "null"],
+			"example": "groups"
+		},
+		"meta": {
+			"type": "object",
+			"example": {}
+		}
+	}
+}

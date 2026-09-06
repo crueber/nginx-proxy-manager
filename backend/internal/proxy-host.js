@@ -7,6 +7,7 @@ import internalAuditLog from "./audit-log.js";
 import internalCertificate from "./certificate.js";
 import internalHost from "./host.js";
 import internalNginx from "./nginx.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const omissions = () => {
 	return ["is_deleted", "owner.is_deleted"];
@@ -78,10 +79,15 @@ const internalProxyHost = {
 			})
 			.then((row) => {
 				// re-fetch with cert
-				return internalProxyHost.get(access, {
-					id: row.id,
-					expand: ["certificate", "owner", "access_list.[clients,items]"],
-				});
+				return internalProxyHost.get(
+					access,
+					{
+						id: row.id,
+						expand: ["certificate", "owner", "access_list.[clients,items,oidc_providers]"],
+						// Internal use: keep encrypted OIDC secrets for nginx config generation
+						keep_oidc_secrets: true,
+					},
+				);
 			})
 			.then((row) => {
 				// Configure nginx
@@ -204,10 +210,15 @@ const internalProxyHost = {
 			})
 			.then(() => {
 				return internalProxyHost
-					.get(access, {
-						id: thisData.id,
-						expand: ["owner", "certificate", "access_list.[clients,items]"],
-					})
+					.get(
+						access,
+						{
+							id: thisData.id,
+							expand: ["owner", "certificate", "access_list.[clients,items,oidc_providers]"],
+							// Internal use: keep encrypted OIDC secrets for nginx config generation
+							keep_oidc_secrets: true,
+						},
+					)
 					.then((row) => {
 						if (!row.enabled) {
 							// No need to add nginx config if host is disabled
@@ -257,6 +268,11 @@ const internalProxyHost = {
 					throw new errs.ItemNotFoundError(thisData.id);
 				}
 				const thisRow = internalHost.cleanRowCertificateMeta(row);
+				// OIDC provider secrets are write-only: strip them from API-facing output
+				// unless the caller explicitly keeps them for nginx config generation.
+				if (!thisData.keep_oidc_secrets && thisRow?.access_list) {
+					thisRow.access_list = internalOidcProvider.sanitizeForApi(thisRow.access_list);
+				}
 				// Custom omissions
 				if (typeof thisData.omit !== "undefined" && thisData.omit !== null) {
 					return _.omit(row, thisData.omit);
@@ -445,6 +461,13 @@ const internalProxyHost = {
 		}
 
 		const rows = await query.then(utils.omitRows(omissions()));
+		// OIDC provider secrets are write-only: strip them from API-facing output
+		rows.map((row, idx) => {
+			if (row?.access_list) {
+				rows[idx].access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+			}
+			return true;
+		});
 		if (typeof expand !== "undefined" && expand !== null && expand.indexOf("certificate") !== -1) {
 			return internalHost.cleanAllRowsCertificateMeta(rows);
 		}
