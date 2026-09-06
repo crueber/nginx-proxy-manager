@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+	escapeLikePattern,
 	fetchDiscoveryDocument,
 	hydrateForNginx,
 	normalizeProviderIds,
@@ -142,6 +143,19 @@ describe("normalizeProviderIds", () => {
 		assert.deepEqual(normalizeProviderIds(["2", 2, "abc", "2abc", 2.5, -1, 0, 3]), [2, 3]);
 		assert.deepEqual(normalizeProviderIds(undefined), []);
 		assert.deepEqual(normalizeProviderIds([]), []);
+	});
+});
+
+describe("escapeLikePattern", () => {
+	it("escapes LIKE wildcards and the escape character itself", () => {
+		assert.equal(escapeLikePattern("100%_\\"), "100\\%\\_\\\\");
+	});
+	it("leaves plain text untouched", () => {
+		assert.equal(escapeLikePattern("Keycloak"), "Keycloak");
+	});
+	it("coerces nullish input to empty string", () => {
+		assert.equal(escapeLikePattern(undefined), "");
+		assert.equal(escapeLikePattern(null), "");
 	});
 });
 

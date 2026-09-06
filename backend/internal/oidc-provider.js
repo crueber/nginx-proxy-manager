@@ -3,6 +3,7 @@ import errs from "../lib/error.js";
 import {
 	DEFAULT_SCOPES,
 	DEFAULT_USERNAME_CLAIM,
+	escapeLikePattern,
 	fetchDiscoveryDocument,
 	getDecryptedSecret,
 	hydrateForNginx,
@@ -46,8 +47,9 @@ const internalOidcProvider = {
 		}
 
 		if (typeof searchQuery === "string") {
-			const escaped = searchQuery.replace(/[\\%_]/g, (c) => `\\${c}`);
-			query.where("oidc_provider.name", "like", `%${escaped}%`);
+			// Explicit ESCAPE clause so the backslash escaping behaves identically
+			// on MySQL/MariaDB and SQLite (which has no default LIKE escape).
+			query.whereRaw("oidc_provider.name LIKE ? ESCAPE '\\'", [`%${escapeLikePattern(searchQuery)}%`]);
 		}
 
 		const rows = await query.then(utils.omitRows(omissions()));

@@ -21,6 +21,15 @@ and JWKS URI. The client secret is stored encrypted in the database, is write-on
 through the API (leave the field blank to keep the stored secret), and is never
 returned by the API or written to logs.
 
+Security note: OIDC management is a trusted-operator feature (it requires
+`access_lists` permissions). The Test button makes the NPM backend fetch the
+*stored* discovery URL server-side — callers cannot supply an arbitrary URL at
+test time. Fetches are https-only (validated at write time, https-downgrade
+redirects refused), time out after 10s, and discovery bodies are capped at
+200KB. There is deliberately no private-IP blocklist, so a stored URL can
+reach internal hosts — this is what allows split-horizon/private IdPs. Only
+grant OIDC permissions to operators you trust with server-side egress.
+
 Set `NPM_OIDC_SECRET_KEY` to a 32-byte hex string so the encryption key is stable
 and backed up. Without it, a host-derived fallback key is used (single-node only).
 

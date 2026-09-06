@@ -180,6 +180,18 @@ const redactSecretsForLog = (text) => {
 };
 
 /**
+ * Escapes `%`, `_` and `\` for use in a SQL LIKE pattern. The result must
+ * always be paired with an explicit `ESCAPE '\'` clause: MySQL/MariaDB treat
+ * backslash as the default LIKE escape, but SQLite (NPM's default database
+ * for many installs) has no default escape character, so without the clause
+ * the pattern would be dialect-dependent.
+ *
+ * @param {String} value
+ * @returns {String}
+ */
+const escapeLikePattern = (value) => String(value ?? "").replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
  * Normalizes an access-list ↔ provider ID list (any-of semantics):
  * strict positive integers only, de-duplicated. Used by
  * `setProvidersForAccessList` and unit-tested here.
@@ -306,6 +318,7 @@ export {
 	CLAIM_NAME_RE,
 	DEFAULT_SCOPES,
 	DEFAULT_USERNAME_CLAIM,
+	escapeLikePattern,
 	fetchDiscoveryDocument,
 	getDecryptedSecret,
 	hydrateForNginx,

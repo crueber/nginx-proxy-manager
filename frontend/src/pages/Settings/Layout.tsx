@@ -6,10 +6,28 @@ import OidcProviders from "./OidcProviders";
 
 type Tab = "default-site" | "oidc-providers";
 
+const OIDC_HASH = "#oidc-providers";
+
+// The Access List modal links here as `/settings#oidc-providers` when no
+// providers exist yet, so honor the hash on load.
+function initialTab(): Tab {
+	if (typeof window !== "undefined" && window.location.hash === OIDC_HASH) {
+		return "oidc-providers";
+	}
+	return "default-site";
+}
+
 export default function Layout() {
 	// Taken from https://preview.tabler.io/settings.html
 	// Refer to that when updating this content
-	const [tab, setTab] = useState<Tab>("default-site");
+	const [tab, setTab] = useState<Tab>(initialTab);
+
+	const selectTab = (id: Tab) => {
+		setTab(id);
+		if (typeof window !== "undefined") {
+			window.location.hash = id === "oidc-providers" ? OIDC_HASH : "";
+		}
+	};
 
 	const navItem = (id: Tab, labelId: string) => (
 		<a
@@ -17,7 +35,7 @@ export default function Layout() {
 			className={cn("list-group-item list-group-item-action d-flex align-items-center", { active: tab === id })}
 			onClick={(e) => {
 				e.preventDefault();
-				setTab(id);
+				selectTab(id);
 			}}
 		>
 			<T id={labelId} />

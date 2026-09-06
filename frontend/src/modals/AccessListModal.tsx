@@ -282,7 +282,7 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 												{!hasOidcProviders && (
 													<div className="mt-3 text-muted">
 														<T id="oidc-providers.empty" />{" "}
-														<a href="/settings">
+														<a href="/settings#oidc-providers">
 															<T id="oidc-providers.open-settings" />
 														</a>
 													</div>
