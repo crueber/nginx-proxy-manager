@@ -5,6 +5,39 @@ import { decryptSecret } from "./oidc-crypto.js";
 const DEFAULT_SCOPES = "openid email profile";
 const DEFAULT_USERNAME_CLAIM = "email";
 const CLAIM_NAME_RE = /^[A-Za-z0-9_.-]+$/;
+// Discovery documents are a few KB of JSON; hard-cap what we buffer.
+const MAX_DISCOVERY_BYTES = 200000;
+
+/**
+ * Reads a fetch response body with a hard byte cap so a malicious endpoint
+ * cannot exhaust memory. (Only reachable by permission-gated users via the
+ * provider test button.)
+ */
+const readCappedText = async (res) => {
+	if (!res.body?.getReader) {
+		const text = await res.text();
+		if (text.length > MAX_DISCOVERY_BYTES) {
+			throw new Error("Discovery document exceeds size limit");
+		}
+		return text;
+	}
+	const reader = res.body.getReader();
+	let received = 0;
+	const chunks = [];
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) {
+			break;
+		}
+		received += value.byteLength;
+		if (received > MAX_DISCOVERY_BYTES) {
+			await reader.cancel();
+			throw new Error("Discovery document exceeds size limit");
+		}
+		chunks.push(value);
+	}
+	return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+};
 
 /**
  * Pure OIDC provider helpers (no database access) so they can be unit tested
@@ -102,20 +135,24 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 				lastError = new Error(`Discovery endpoint returned HTTP ${res.status}`);
 				continue;
 			}
-			// Discovery documents are tiny JSON blobs; refuse oversized bodies.
-			// (Only reachable by permission-gated users via the test button.)
-			const contentLength = Number(res.headers.get("content-length"));
-			if (Number.isFinite(contentLength) && contentLength > 1000000) {
-				lastError = new Error("Discovery document exceeds size limit");
-				continue;
-			}
+			// Discovery bodies are read with a hard byte cap (see readCappedText).
 			if (mustStayHttps && !String(res.url || "").toLowerCase().startsWith("https:")) {
 				lastError = new Error("Discovery endpoint redirected away from https, refusing");
 				continue;
 			}
-			const doc = await res.json();
+			let doc = null;
+			try {
+				doc = JSON.parse(await readCappedText(res));
+			} catch (err) {
+				lastError = err;
+				continue;
+			}
 			if (!doc || typeof doc !== "object" || !doc.issuer || !doc.authorization_endpoint || !doc.jwks_uri) {
 				lastError = new Error("Discovery document is missing required fields (issuer, authorization_endpoint, jwks_uri)");
+				continue;
+			}
+			if (!String(doc.issuer).toLowerCase().startsWith("https:")) {
+				lastError = new Error("Discovery document issuer must be an https:// URL");
 				continue;
 			}
 			return doc;
@@ -143,14 +180,26 @@ const redactSecretsForLog = (text) => {
 
 /**
  * Normalizes an access-list ↔ provider ID list (any-of semantics):
- * integer parsing, positive-only, de-duplicated. Used by
+ * strict positive integers only, de-duplicated. Used by
  * `setProvidersForAccessList` and unit-tested here.
  *
  * @param {Array} providerIds
  * @returns {Array<Integer>}
  */
 const normalizeProviderIds = (providerIds) => {
-	return [...new Set((providerIds || []).map((id) => Number.parseInt(id, 10)).filter((id) => id > 0))];
+	const ids = new Set();
+	for (const id of providerIds || []) {
+		let parsed = Number.NaN;
+		if (typeof id === "number") {
+			parsed = id;
+		} else if (typeof id === "string" && /^\d+$/.test(id.trim())) {
+			parsed = Number.parseInt(id.trim(), 10);
+		}
+		if (Number.isInteger(parsed) && parsed > 0) {
+			ids.add(parsed);
+		}
+	}
+	return [...ids];
 };
 
 /**

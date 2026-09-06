@@ -278,7 +278,7 @@ const internalProxyHost = {
 				}
 				// Custom omissions
 				if (typeof thisData.omit !== "undefined" && thisData.omit !== null) {
-					return _.omit(row, thisData.omit);
+					return _.omit(thisRow, thisData.omit);
 				}
 				return thisRow;
 			});

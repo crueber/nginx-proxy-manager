@@ -46,7 +46,8 @@ const internalOidcProvider = {
 		}
 
 		if (typeof searchQuery === "string") {
-			query.where("name", "like", `%${searchQuery}%`);
+			const escaped = searchQuery.replace(/[\\%_]/g, (c) => `\\${c}`);
+			query.where("oidc_provider.name", "like", `%${escaped}%`);
 		}
 
 		const rows = await query.then(utils.omitRows(omissions()));
@@ -125,10 +126,14 @@ const internalOidcProvider = {
 	 * @returns {Promise}
 	 */
 	update: async (access, data) => {
-		await access.can("access_lists:update", data.id);
+		const accessData = await access.can("access_lists:update", data.id);
 		validateProviderInput(data, true);
 
-		const row = await oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0).first();
+		const query = oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0);
+		if (accessData.permission_visibility !== "all") {
+			query.andWhere("owner_user_id", access.token.getUserId(1));
+		}
+		const row = await query.first();
 		if (!row?.id) {
 			throw new errs.ItemNotFoundError(data.id);
 		}
@@ -195,8 +200,12 @@ const internalOidcProvider = {
 	 * @returns {Promise}
 	 */
 	delete: async (access, data) => {
-		await access.can("access_lists:delete", data.id);
-		const row = await oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0).first();
+		const accessData = await access.can("access_lists:delete", data.id);
+		const query = oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0);
+		if (accessData.permission_visibility !== "all") {
+			query.andWhere("owner_user_id", access.token.getUserId(1));
+		}
+		const row = await query.first();
 		if (!row?.id) {
 			throw new errs.ItemNotFoundError(data.id);
 		}
@@ -224,8 +233,12 @@ const internalOidcProvider = {
 	 * @returns {Promise<Object>}
 	 */
 	test: async (access, data) => {
-		await access.can("access_lists:get", data.id);
-		const row = await oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0).first();
+		const accessData = await access.can("access_lists:get", data.id);
+		const query = oidcProviderModel.query().where("id", data.id).andWhere("is_deleted", 0);
+		if (accessData.permission_visibility !== "all") {
+			query.andWhere("owner_user_id", access.token.getUserId(1));
+		}
+		const row = await query.first();
 		if (!row?.id) {
 			throw new errs.ItemNotFoundError(data.id);
 		}

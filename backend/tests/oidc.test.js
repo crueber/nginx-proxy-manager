@@ -139,7 +139,7 @@ describe("validateProviderInput", () => {
 
 describe("normalizeProviderIds", () => {
 	it("dedups, parses and filters ids", () => {
-		assert.deepEqual(normalizeProviderIds(["2", 2, "abc", -1, 0, 3]), [2, 3]);
+		assert.deepEqual(normalizeProviderIds(["2", 2, "abc", "2abc", 2.5, -1, 0, 3]), [2, 3]);
 		assert.deepEqual(normalizeProviderIds(undefined), []);
 		assert.deepEqual(normalizeProviderIds([]), []);
 	});
@@ -252,7 +252,7 @@ describe("fetchDiscoveryDocument", () => {
 
 	const startServer = () =>
 		new Promise((resolve) => {
-			const server = http.createServer((req, res) => {
+		const server = http.createServer((req, res) => {
 				if (req.url === "/realms/npm/.well-known/openid-configuration") {
 					res.writeHead(200, { "content-type": "application/json" });
 					res.end(JSON.stringify(doc));
@@ -291,6 +291,23 @@ describe("fetchDiscoveryDocument", () => {
 
 	it("throws ValidationError when unreachable", async () => {
 		await assert.rejects(() => fetchDiscoveryDocument("http://127.0.0.1:1/unreachable"), /OIDC discovery failed/);
+	});
+
+	it("refuses oversized discovery bodies", async () => {
+		const server = http.createServer((_req, res) => {
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(`{"issuer":"https://x.example.com","pad":"${"p".repeat(300000)}"}`);
+		});
+		await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+		try {
+			const port = server.address().port;
+			await assert.rejects(
+				() => fetchDiscoveryDocument(`http://127.0.0.1:${port}/.well-known/openid-configuration`),
+				/OIDC discovery failed/,
+			);
+		} finally {
+			server.close();
+		}
 	});
 });
 
@@ -351,6 +368,9 @@ describe("nginx _access.conf rendering", () => {
 		assert.match(out, /access_by_lua_block/);
 		assert.match(out, /http_authorization/);
 		assert.match(out, /Basic /);
+		// Spoof guard: client-supplied OIDC headers are cleared on the Basic path
+		assert.match(out, /clear_header\("X-OIDC-SUB"\)/);
+		assert.match(out, /clear_header\("X-OIDC-USER"\)/);
 	});
 
 	it("supports multiple providers (any-of)", async () => {
