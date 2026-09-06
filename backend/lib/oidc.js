@@ -102,6 +102,13 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 				lastError = new Error(`Discovery endpoint returned HTTP ${res.status}`);
 				continue;
 			}
+			// Discovery documents are tiny JSON blobs; refuse oversized bodies.
+			// (Only reachable by permission-gated users via the test button.)
+			const contentLength = Number(res.headers.get("content-length"));
+			if (Number.isFinite(contentLength) && contentLength > 1000000) {
+				lastError = new Error("Discovery document exceeds size limit");
+				continue;
+			}
 			if (mustStayHttps && !String(res.url || "").toLowerCase().startsWith("https:")) {
 				lastError = new Error("Discovery endpoint redirected away from https, refusing");
 				continue;
@@ -117,6 +124,21 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 		}
 	}
 	throw new errs.ValidationError(`OIDC discovery failed: ${lastError ? lastError.message : "unknown error"}`);
+};
+
+/**
+ * Redacts embedded OIDC client secrets from rendered nginx configs before logging.
+ * The pattern is escape-aware: the `lua_string` template filter escapes quotes as
+ * `\"`, so a naive `[^"]*` match would stop at an escaped quote and leak the tail.
+ *
+ * @param {String} text
+ * @returns {String}
+ */
+const redactSecretsForLog = (text) => {
+	return String(text ?? "").replace(
+		/(client_secret\s*=\s*"(?:[^"\\]|\\.)*")/g,
+		'client_secret = "[redacted]"',
+	);
 };
 
 /**
@@ -233,6 +255,7 @@ export {
 	getDecryptedSecret,
 	hydrateForNginx,
 	normalizeProviderIds,
+	redactSecretsForLog,
 	sanitizeForApi,
 	serializeProvider,
 	validateProviderInput,

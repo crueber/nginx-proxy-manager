@@ -7,8 +7,11 @@ const IV_LENGTH = 12;
  * Encryption helper for OIDC provider client secrets (at rest).
  *
  * The key is read from `NPM_OIDC_SECRET_KEY` (a 32-byte hex string) when set,
- * so deployments can use a stable, backed-up key. Otherwise a host-derived
- * fallback is used and the limitation is clearly logged by the caller.
+ * so deployments can use a stable, backed-up key. Otherwise a static built-in
+ * fallback key is used: it is IDENTICAL on every install, so anyone holding a
+ * database dump plus this source code can decrypt all secrets. Never rely on
+ * the fallback in production — set `NPM_OIDC_SECRET_KEY`. Rows already
+ * encrypted with the fallback key stay readable so upgrades don't brick them.
  *
  * Payload format: `v1:<iv-hex>:<auth-tag-hex>:<ciphertext-hex>`
  *
@@ -24,8 +27,8 @@ const getKey = () => {
 		}
 		throw new Error("NPM_OIDC_SECRET_KEY must be a 32-byte hex string (64 hex chars)");
 	}
-	// Clearly-marked fallback: derived per-host, NOT suitable for multi-node
-	// deployments. Set NPM_OIDC_SECRET_KEY in production.
+	// Clearly-marked fallback: static built-in key, identical everywhere.
+	// NOT suitable for production. Set NPM_OIDC_SECRET_KEY instead.
 	return crypto.scryptSync("npm-oidc-fallback-key", "npm-oidc-salt", 32);
 };
 

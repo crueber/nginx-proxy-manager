@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import _ from "lodash";
 import errs from "../lib/error.js";
+import { redactSecretsForLog } from "../lib/oidc.js";
 import utils from "../lib/utils.js";
 import { debug, nginx as logger } from "../logger.js";
 import internalOidcProvider from "./oidc-provider.js";
@@ -263,12 +264,7 @@ const internalNginx = {
 					.then((config_text) => {
 						fs.writeFileSync(filename, config_text, { encoding: "utf8" });
 						// Never log OIDC client secrets that are embedded in the rendered config
-						debug(
-							logger,
-							"Wrote config:",
-							filename,
-							config_text.replace(/(client_secret\s*=\s*")[^"]*(")/g, "$1[redacted]$2"),
-						);
+						debug(logger, "Wrote config:", filename, redactSecretsForLog(config_text));
 
 						// Restore locations array
 						host.locations = origLocations;

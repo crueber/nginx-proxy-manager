@@ -24,7 +24,15 @@ const internalAccessList = {
 	 * @returns {Promise}
 	 */
 	create: async (access, data) => {
-		await access.can("access_lists:create", data);
+		const accessData = await access.can("access_lists:create", data);
+		const oidcScope = {
+			ownerUserId: access.token.getUserId(1),
+			visibility: accessData?.permission_visibility,
+		};
+		// Validate OIDC attachments up-front so invalid IDs fail before the list is created
+		if (typeof data.oidc_provider_ids !== "undefined") {
+			await internalOidcProvider.resolveProviderIds(data.oidc_provider_ids, oidcScope);
+		}
 		const row = await accessListModel
 			.query()
 			.insertAndFetch({
@@ -63,7 +71,7 @@ const internalAccessList = {
 
 		// OIDC providers (any-of semantics)
 		if (typeof data.oidc_provider_ids !== "undefined") {
-			await internalOidcProvider.setProvidersForAccessList(row.id, data.oidc_provider_ids);
+			await internalOidcProvider.setProvidersForAccessList(row.id, data.oidc_provider_ids, oidcScope);
 		}
 
 		// re-fetch with expansions
@@ -104,7 +112,11 @@ const internalAccessList = {
 	 * @return {Promise}
 	 */
 	update: async (access, data) => {
-		await access.can("access_lists:update", data.id);
+		const accessData = await access.can("access_lists:update", data.id);
+		const oidcScope = {
+			ownerUserId: access.token.getUserId(1),
+			visibility: accessData?.permission_visibility,
+		};
 		const row = await internalAccessList.get(access, { id: data.id });
 		if (row.id !== data.id) {
 			// Sanity check that something crazy hasn't happened
@@ -174,7 +186,7 @@ const internalAccessList = {
 
 		// Check for OIDC providers and sync the association (empty array detaches all)
 		if (typeof data.oidc_provider_ids !== "undefined") {
-			await internalOidcProvider.setProvidersForAccessList(data.id, data.oidc_provider_ids);
+			await internalOidcProvider.setProvidersForAccessList(data.id, data.oidc_provider_ids, oidcScope);
 		}
 
 		// Add to audit log
@@ -241,7 +253,7 @@ const internalAccessList = {
 		if (!row?.id) {
 			throw new errs.ItemNotFoundError(thisData.id);
 		}
-		if (!skipMasking && typeof row.items !== "undefined" && row.items) {
+		if (!skipMasking) {
 			row = internalAccessList.maskItems(row);
 		}
 		// Custom omissions
@@ -355,9 +367,7 @@ const internalAccessList = {
 		const rows = await query.then(utils.omitRows(omissions()));
 		if (rows) {
 			rows.map((row, idx) => {
-				if (typeof row.items !== "undefined" && row.items) {
-					rows[idx] = internalAccessList.maskItems(row);
-				}
+				rows[idx] = internalAccessList.maskItems(row);
 				return true;
 			});
 		}
@@ -402,11 +412,23 @@ const internalAccessList = {
 				return true;
 			});
 		}
-		// OIDC provider secrets are write-only: strip encrypted material from API output
-		if (list?.oidc_providers) {
-			return internalOidcProvider.sanitizeForApi(list);
+		// OIDC provider secrets are write-only: strip encrypted material from API output,
+		// including nested proxy_hosts[].access_list expansions.
+		let result = list;
+		if (result?.oidc_providers) {
+			result = internalOidcProvider.sanitizeForApi(result);
 		}
-		return list;
+		if (Array.isArray(result?.proxy_hosts)) {
+			result = {
+				...result,
+				proxy_hosts: result.proxy_hosts.map((proxyHost) =>
+					proxyHost?.access_list
+						? { ...proxyHost, access_list: internalOidcProvider.sanitizeForApi(proxyHost.access_list) }
+						: proxyHost,
+				),
+			};
+		}
+		return result;
 	},
 
 	/**

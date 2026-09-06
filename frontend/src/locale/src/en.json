@@ -609,7 +609,7 @@
 		"defaultMessage": "OIDC Providers"
 	},
 	"oidc-providers.any-of": {
-		"defaultMessage": "Any attached provider grants access (OR semantics with Basic Auth when both are set)"
+		"defaultMessage": "Attached providers are tried in order; Basic Auth still works when both are set (OR semantics)"
 	},
 	"oidc-providers.empty": {
 		"defaultMessage": "No OIDC providers configured yet. Add one in Settings."

@@ -9,6 +9,7 @@ import {
 	fetchDiscoveryDocument,
 	hydrateForNginx,
 	normalizeProviderIds,
+	redactSecretsForLog,
 	sanitizeForApi,
 	serializeProvider,
 	validateProviderInput,
@@ -222,6 +223,25 @@ describe("hydrateForNginx", () => {
 	});
 });
 
+describe("redactSecretsForLog", () => {
+	it("redacts embedded client secrets", () => {
+		const out = redactSecretsForLog('client_id = "npm",\nclient_secret = "super-secret-value",');
+		assert.equal(out, 'client_id = "npm",\nclient_secret = "[redacted]",');
+	});
+
+	it("redacts secrets containing escaped quotes without leaking the tail", () => {
+		// As rendered by the lua_string filter for secret qu"ote\backslash
+		const rendered = 'client_secret = "qu\\"ote\\\\backslash",';
+		const out = redactSecretsForLog(rendered);
+		assert.equal(out, 'client_secret = "[redacted]",');
+		assert.doesNotMatch(out, /ote|backslash/);
+	});
+
+	it("leaves other text untouched", () => {
+		assert.equal(redactSecretsForLog("satisfy any;"), "satisfy any;");
+	});
+});
+
 describe("fetchDiscoveryDocument", () => {
 	const doc = {
 		issuer: "https://auth.example.com/realms/npm",
@@ -280,25 +300,30 @@ describe("nginx _access.conf rendering", () => {
 		return engine.parseAndRender(templateText, { access_list_id: accessListId, access_list: accessList });
 	};
 
-	const developTemplate = () =>
-		execSync("git show develop:backend/templates/_access.conf", { cwd: repoRoot, encoding: "utf8" });
+	const developTemplate = (t) => {
+		try {
+			return execSync("git show develop:backend/templates/_access.conf", { cwd: repoRoot, encoding: "utf8" });
+		} catch {
+			t.skip("develop ref unavailable (shallow clone or missing branch)");
+		}
+	};
 
 	const currentTemplate = () => fs.readFileSync(join(backendDir, "templates", "_access.conf"), "utf8");
 
 	const withProviders = (list, providers) => hydrateForNginx({ ...list, oidc_providers: providers });
 
-	it("basic-only output is byte-identical to develop", async () => {
+	it("basic-only output is byte-identical to develop", async (t) => {
 		const ctx = basicOnlyList();
-		const expected = await renderAccess(developTemplate(), ctx);
+		const expected = await renderAccess(developTemplate(t), ctx);
 		const actual = await renderAccess(currentTemplate(), ctx);
 		assert.equal(actual, expected);
 		assert.match(actual, /auth_basic/);
 		assert.doesNotMatch(actual, /oidc|access_by_lua/i);
 	});
 
-	it("neither (no basic, no oidc, no clients) is byte-identical to develop", async () => {
+	it("neither (no basic, no oidc, no clients) is byte-identical to develop", async (t) => {
 		const ctx = { id: 2, name: "empty", satisfy_any: false, pass_auth: false, items: [], clients: [] };
-		const expected = await renderAccess(developTemplate(), ctx);
+		const expected = await renderAccess(developTemplate(t), ctx);
 		const actual = await renderAccess(currentTemplate(), ctx);
 		assert.equal(actual, expected);
 		assert.doesNotMatch(actual, /auth_basic|access_by_lua/i);

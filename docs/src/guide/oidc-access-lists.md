@@ -28,8 +28,12 @@ and backed up. Without it, a host-derived fallback key is used (single-node only
 
 Edit an Access List and open the **OIDC Providers** tab (shown only when at least
 one provider exists; otherwise the Authorizations tab links to Settings). Attach one
-or more providers — **any** attached provider granting access is sufficient
-(any-of semantics).
+or more providers, which are tried in order with first success winning.
+
+Limitation: an unauthenticated request is redirected by the **first** attached
+provider, so the initial login always goes through it; later providers serve as
+fallback. A true multi-provider chooser (per-provider login links) is a future
+enhancement.
 
 Enforcement semantics:
 

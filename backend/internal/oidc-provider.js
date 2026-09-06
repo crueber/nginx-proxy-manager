@@ -90,7 +90,9 @@ const internalOidcProvider = {
 		}
 
 		if (usingFallbackKey()) {
-			logger.warn("NPM_OIDC_SECRET_KEY is not set; using host-derived fallback key for OIDC secret encryption");
+			logger.warn(
+				"NPM_OIDC_SECRET_KEY is not set; using static built-in fallback key for OIDC secret encryption. Set NPM_OIDC_SECRET_KEY in production",
+			);
 		}
 
 		const row = await oidcProviderModel
@@ -156,7 +158,9 @@ const internalOidcProvider = {
 		// Secret is write-only: only overwrite when a new non-empty value is supplied (rotate).
 		if (typeof data.client_secret !== "undefined" && data.client_secret) {
 			if (usingFallbackKey()) {
-				logger.warn("NPM_OIDC_SECRET_KEY is not set; using host-derived fallback key for OIDC secret encryption");
+				logger.warn(
+				"NPM_OIDC_SECRET_KEY is not set; using static built-in fallback key for OIDC secret encryption. Set NPM_OIDC_SECRET_KEY in production",
+			);
 			}
 			patch.client_secret_encrypted = encryptSecret(data.client_secret);
 		}
@@ -235,28 +239,52 @@ const internalOidcProvider = {
 	},
 
 	/**
-	 * Syncs the access-list ↔ provider association (any-of semantics).
-	 * Unknown or deleted provider IDs are rejected.
+	 * Validates association candidate IDs and returns the normalized list.
+	 * Unknown, deleted — or, for restricted-visibility users, unowned —
+	 * provider IDs are rejected without revealing which (same error).
 	 *
-	 * @param {Integer} accessListId
-	 * @param {Array<Integer>} providerIds
-	 * @returns {Promise}
+	 * @param {Array} providerIds
+	 * @param {Object} [scope]
+	 * @param {Integer} [scope.ownerUserId]
+	 * @param {String} [scope.visibility]
+	 * @returns {Promise<Array<Integer>>}
 	 */
-	setProvidersForAccessList: async (accessListId, providerIds) => {
+	resolveProviderIds: async (providerIds, scope) => {
 		const ids = normalizeProviderIds(providerIds);
 		if (ids.length) {
-			const rows = await oidcProviderModel.query().whereIn("id", ids).andWhere("is_deleted", 0);
+			const query = oidcProviderModel.query().whereIn("id", ids).andWhere("is_deleted", 0);
+			if (scope && scope.visibility !== "all") {
+				query.andWhere("owner_user_id", scope.ownerUserId);
+			}
+			const rows = await query;
 			if (rows.length !== ids.length) {
 				throw new errs.ValidationError("One or more OIDC providers do not exist");
 			}
 		}
-		await accessListOidcModel.query().delete().where("access_list_id", accessListId);
-		for (const providerId of ids) {
-			await accessListOidcModel.query().insert({
-				access_list_id: accessListId,
-				oidc_provider_id: providerId,
-			});
-		}
+		return ids;
+	},
+
+	/**
+	 * Syncs the access-list ↔ provider association (any-of semantics).
+	 * The delete+insert sync runs in a transaction so a failed insert
+	 * cannot leave a partially-attached list.
+	 *
+	 * @param {Integer} accessListId
+	 * @param {Array} providerIds
+	 * @param {Object} [scope]  See resolveProviderIds
+	 * @returns {Promise}
+	 */
+	setProvidersForAccessList: async (accessListId, providerIds, scope) => {
+		const ids = await internalOidcProvider.resolveProviderIds(providerIds, scope);
+		await accessListOidcModel.transaction(async (trx) => {
+			await accessListOidcModel.query(trx).delete().where("access_list_id", accessListId);
+			for (const providerId of ids) {
+				await accessListOidcModel.query(trx).insert({
+					access_list_id: accessListId,
+					oidc_provider_id: providerId,
+				});
+			}
+		});
 	},
 };
 
