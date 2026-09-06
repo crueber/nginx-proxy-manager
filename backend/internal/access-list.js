@@ -7,6 +7,7 @@ import { access as logger } from "../logger.js";
 import accessListModel from "../models/access_list.js";
 import accessListAuthModel from "../models/access_list_auth.js";
 import accessListClientModel from "../models/access_list_client.js";
+import accessListOidcModel from "../models/access_list_oidc.js";
 import proxyHostModel from "../models/proxy_host.js";
 import internalAuditLog from "./audit-log.js";
 import internalNginx from "./nginx.js";
@@ -172,7 +173,7 @@ const internalAccessList = {
 		}
 
 		// Check for OIDC providers and sync the association (empty array detaches all)
-		if (typeof data.oidc_provider_ids !== "undefined" && data.oidc_provider_ids) {
+		if (typeof data.oidc_provider_ids !== "undefined") {
 			await internalOidcProvider.setProvidersForAccessList(data.id, data.oidc_provider_ids);
 		}
 
@@ -277,6 +278,9 @@ const internalAccessList = {
 		await accessListModel.query().where("id", row.id).patch({
 			is_deleted: 1,
 		});
+
+		// 1b. detach OIDC providers (avoid orphaned access_list_oidc rows)
+		await accessListOidcModel.query().delete().where("access_list_id", row.id);
 
 		// 2. update any proxy hosts that were using it (ignoring permissions)
 		if (row.proxy_hosts) {

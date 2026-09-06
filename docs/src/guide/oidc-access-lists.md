@@ -38,6 +38,9 @@ Enforcement semantics:
 - **OIDC only**: OIDC alone is required.
 - **Neither**: existing behavior (allow/IP rules only) is unchanged.
 
+IP allow/deny rules (`clients`) are orthogonal: an allowed IP does **not** bypass
+OIDC (fail-closed AND). Only Basic Auth participates in OR semantics with OIDC.
+
 ## Runtime requirements
 
 Enforcement is rendered as an `access_by_lua_block` using `lua-resty-openidc`, so

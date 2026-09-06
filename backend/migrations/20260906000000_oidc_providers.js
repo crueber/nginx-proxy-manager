@@ -44,6 +44,7 @@ const up = (knex) => {
 				table.integer("access_list_id").notNull().unsigned();
 				table.integer("oidc_provider_id").notNull().unsigned();
 				table.unique(["access_list_id", "oidc_provider_id"]);
+				table.index(["oidc_provider_id"]);
 			});
 		})
 		.then(() => {

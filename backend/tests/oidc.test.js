@@ -203,6 +203,23 @@ describe("hydrateForNginx", () => {
 		const list = basicOnlyList();
 		assert.equal(hydrateForNginx(list), list);
 	});
+
+	it("renders an empty secret when none is stored (public IdP client)", () => {
+		const list = { oidc_providers: [makeProviderRow({ client_secret_encrypted: null })] };
+		assert.equal(hydrateForNginx(list).oidc_providers[0].client_secret, "");
+	});
+
+	it("fails visibly when a stored secret cannot be decrypted", () => {
+		const list = { oidc_providers: [makeProviderRow()] };
+		process.env.NPM_OIDC_SECRET_KEY = "b".repeat(64);
+		try {
+			assert.throws(() => hydrateForNginx(list), /cannot be decrypted/);
+		} finally {
+			process.env.NPM_OIDC_SECRET_KEY = "a".repeat(64);
+		}
+		// input row is untouched by the failed hydration
+		assert.ok(list.oidc_providers[0].client_secret_encrypted);
+	});
 });
 
 describe("fetchDiscoveryDocument", () => {
@@ -312,6 +329,7 @@ describe("nginx _access.conf rendering", () => {
 	});
 
 	it("supports multiple providers (any-of)", async () => {
+
 		const ctx = withProviders(basicOnlyList(), [
 			makeProviderRow({ id: 7, discovery_url: "https://a.example.com" }),
 			makeProviderRow({ id: 8, name: "Second", discovery_url: "https://b.example.com" }),
@@ -321,6 +339,24 @@ describe("nginx _access.conf rendering", () => {
 		assert.match(out, /b\.example\.com/);
 		assert.match(out, /callback\/7/);
 		assert.match(out, /callback\/8/);
+	});
+
+	it("keeps IP rules independent of OIDC (allowed IP does not bypass OIDC)", async () => {
+		const ctx = withProviders(
+			{
+				id: 5,
+				name: "ip+oidc",
+				satisfy_any: true,
+				pass_auth: false,
+				items: [],
+				clients: [{ address: "192.168.0.0/24", directive: "allow" }],
+			},
+			[makeProviderRow()],
+		);
+		const out = await renderAccess(currentTemplate(), ctx);
+		assert.match(out, /allow 192\.168\.0\.0\/24;/);
+		assert.match(out, /deny all;/);
+		assert.match(out, /access_by_lua_block/);
 	});
 
 	it("escapes quotes in secrets for lua", async () => {

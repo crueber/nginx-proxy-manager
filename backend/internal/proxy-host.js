@@ -84,9 +84,9 @@ const internalProxyHost = {
 					{
 						id: row.id,
 						expand: ["certificate", "owner", "access_list.[clients,items,oidc_providers]"],
-						// Internal use: keep encrypted OIDC secrets for nginx config generation
-						keep_oidc_secrets: true,
 					},
+					// Internal use: keep encrypted OIDC secrets for nginx config generation
+					true,
 				);
 			})
 			.then((row) => {
@@ -215,9 +215,9 @@ const internalProxyHost = {
 						{
 							id: thisData.id,
 							expand: ["owner", "certificate", "access_list.[clients,items,oidc_providers]"],
-							// Internal use: keep encrypted OIDC secrets for nginx config generation
-							keep_oidc_secrets: true,
 						},
+						// Internal use: keep encrypted OIDC secrets for nginx config generation
+						true,
 					)
 					.then((row) => {
 						if (!row.enabled) {
@@ -239,9 +239,12 @@ const internalProxyHost = {
 	 * @param  {Number}   data.id
 	 * @param  {Array}    [data.expand]
 	 * @param  {Array}    [data.omit]
+	 * @param  {Boolean}  [keepOidcSecrets]  Internal only: keep encrypted OIDC
+	 *                                       secrets for nginx config generation.
+	 *                                       Never set from API routes.
 	 * @return {Promise}
 	 */
-	get: (access, data) => {
+	get: (access, data, keepOidcSecrets = false) => {
 		const thisData = data || {};
 		return access
 			.can("proxy_hosts:get", thisData.id)
@@ -270,7 +273,7 @@ const internalProxyHost = {
 				const thisRow = internalHost.cleanRowCertificateMeta(row);
 				// OIDC provider secrets are write-only: strip them from API-facing output
 				// unless the caller explicitly keeps them for nginx config generation.
-				if (!thisData.keep_oidc_secrets && thisRow?.access_list) {
+				if (!keepOidcSecrets && thisRow?.access_list) {
 					thisRow.access_list = internalOidcProvider.sanitizeForApi(thisRow.access_list);
 				}
 				// Custom omissions

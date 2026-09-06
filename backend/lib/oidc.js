@@ -87,6 +87,9 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 	if (!discoveryUrl.includes("/.well-known/openid-configuration")) {
 		candidates.push(`${discoveryUrl.replace(/\/$/, "")}/.well-known/openid-configuration`);
 	}
+	// Stored provider URLs are validated as https:// at write time. Refuse to be
+	// downgraded by redirects (https -> http) during server-side discovery fetches.
+	const mustStayHttps = String(discoveryUrl).toLowerCase().startsWith("https:");
 
 	let lastError = null;
 	for (const url of candidates) {
@@ -97,6 +100,10 @@ const fetchDiscoveryDocument = async (discoveryUrl) => {
 			clearTimeout(timeout);
 			if (!res.ok) {
 				lastError = new Error(`Discovery endpoint returned HTTP ${res.status}`);
+				continue;
+			}
+			if (mustStayHttps && !String(res.url || "").toLowerCase().startsWith("https:")) {
+				lastError = new Error("Discovery endpoint redirected away from https, refusing");
 				continue;
 			}
 			const doc = await res.json();
@@ -168,13 +175,24 @@ const hydrateForNginx = (accessList) => {
 	const hydrated = { ...accessList };
 	hydrated.oidc_providers = accessList.oidc_providers.map((provider) => {
 		const copy = _.omit(provider, ["client_secret_encrypted"]);
-		let secret = null;
-		try {
-			secret = getDecryptedSecret(provider);
-		} catch (_err) {
-			secret = null;
+		if (!provider.client_secret_encrypted) {
+			// No secret stored (e.g. IdP public client): render empty and let the IdP decide.
+			copy.client_secret = "";
+		} else {
+			// A stored secret that cannot be decrypted means key loss or tampering.
+			// Fail config generation visibly instead of rendering a valid-looking
+			// config that always fails closed at the IdP.
+			try {
+				copy.client_secret = getDecryptedSecret(provider) || "";
+			} catch (_err) {
+				throw new errs.ConfigurationError(
+					`OIDC provider #${provider.id} secret cannot be decrypted (key rotation or tampering?)`,
+				);
+			}
+			if (!copy.client_secret) {
+				throw new errs.ConfigurationError(`OIDC provider #${provider.id} decrypted to an empty secret`);
+			}
 		}
-		copy.client_secret = secret || "";
 		// Normalize the discovery document URL for lua-resty-openidc, which
 		// expects the full .well-known document URL (not just the issuer).
 		const discoveryUrl = String(provider.discovery_url || "");
