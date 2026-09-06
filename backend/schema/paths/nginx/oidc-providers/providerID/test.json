@@ -1,0 +1,50 @@
+{
+	"operationId": "testOidcProvider",
+	"summary": "Test an OIDC Provider against its discovery endpoint",
+	"tags": ["oidc-providers"],
+	"security": [
+		{
+			"bearerAuth": ["access_lists.view"]
+		}
+	],
+	"parameters": [
+		{
+			"in": "path",
+			"name": "providerID",
+			"description": "OIDC Provider ID",
+			"schema": {
+				"type": "integer",
+				"minimum": 1
+			},
+			"required": true,
+			"example": 1
+		}
+	],
+	"responses": {
+		"200": {
+			"description": "Discovery reachable and valid",
+			"content": {
+				"application/json": {
+					"schema": {
+						"type": "object",
+						"required": ["ok", "issuer", "authorization_endpoint", "jwks_uri"],
+						"properties": {
+							"ok": {
+								"type": "boolean"
+							},
+							"issuer": {
+								"type": "string"
+							},
+							"authorization_endpoint": {
+								"type": "string"
+							},
+							"jwks_uri": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

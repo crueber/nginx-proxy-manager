@@ -7,9 +7,11 @@ import { access as logger } from "../logger.js";
 import accessListModel from "../models/access_list.js";
 import accessListAuthModel from "../models/access_list_auth.js";
 import accessListClientModel from "../models/access_list_client.js";
+import accessListOidcModel from "../models/access_list_oidc.js";
 import proxyHostModel from "../models/proxy_host.js";
 import internalAuditLog from "./audit-log.js";
 import internalNginx from "./nginx.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const omissions = () => {
 	return ["is_deleted"];
@@ -22,7 +24,15 @@ const internalAccessList = {
 	 * @returns {Promise}
 	 */
 	create: async (access, data) => {
-		await access.can("access_lists:create", data);
+		const accessData = await access.can("access_lists:create", data);
+		const oidcScope = {
+			ownerUserId: access.token.getUserId(1),
+			visibility: accessData?.permission_visibility,
+		};
+		// Validate OIDC attachments up-front so invalid IDs fail before the list is created
+		if (typeof data.oidc_provider_ids !== "undefined") {
+			await internalOidcProvider.resolveProviderIds(data.oidc_provider_ids, oidcScope);
+		}
 		const row = await accessListModel
 			.query()
 			.insertAndFetch({
@@ -59,12 +69,17 @@ const internalAccessList = {
 			});
 		}
 
+		// OIDC providers (any-of semantics)
+		if (typeof data.oidc_provider_ids !== "undefined") {
+			await internalOidcProvider.setProvidersForAccessList(row.id, data.oidc_provider_ids, oidcScope);
+		}
+
 		// re-fetch with expansions
 		const freshRow = await internalAccessList.get(
 			access,
 			{
 				id: data.id,
-				expand: ["owner", "items", "clients", "proxy_hosts.access_list.[clients,items]"],
+				expand: ["owner", "items", "clients", "oidc_providers", "proxy_hosts.access_list.[clients,items,oidc_providers]"],
 			},
 			true, // skip masking
 		);
@@ -97,7 +112,11 @@ const internalAccessList = {
 	 * @return {Promise}
 	 */
 	update: async (access, data) => {
-		await access.can("access_lists:update", data.id);
+		const accessData = await access.can("access_lists:update", data.id);
+		const oidcScope = {
+			ownerUserId: access.token.getUserId(1),
+			visibility: accessData?.permission_visibility,
+		};
 		const row = await internalAccessList.get(access, { id: data.id });
 		if (row.id !== data.id) {
 			// Sanity check that something crazy hasn't happened
@@ -165,6 +184,11 @@ const internalAccessList = {
 			}
 		}
 
+		// Check for OIDC providers and sync the association (empty array detaches all)
+		if (typeof data.oidc_provider_ids !== "undefined") {
+			await internalOidcProvider.setProvidersForAccessList(data.id, data.oidc_provider_ids, oidcScope);
+		}
+
 		// Add to audit log
 		await internalAuditLog.add(access, {
 			action: "updated",
@@ -178,7 +202,7 @@ const internalAccessList = {
 			access,
 			{
 				id: data.id,
-				expand: ["owner", "items", "clients", "proxy_hosts.[certificate,access_list.[clients,items]]"],
+				expand: ["owner", "items", "clients", "oidc_providers", "proxy_hosts.[certificate,access_list.[clients,items,oidc_providers]]"],
 			},
 			true, // skip masking
 		);
@@ -213,7 +237,7 @@ const internalAccessList = {
 			.where("access_list.is_deleted", 0)
 			.andWhere("access_list.id", thisData.id)
 			.groupBy("access_list.id")
-			.allowGraph("[owner,items,clients,proxy_hosts.[certificate,access_list.[clients,items]]]")
+			.allowGraph("[owner,items,clients,oidc_providers,proxy_hosts.[certificate,access_list.[clients,items,oidc_providers]]]")
 			.first();
 
 		if (accessData.permission_visibility !== "all") {
@@ -229,7 +253,7 @@ const internalAccessList = {
 		if (!row?.id) {
 			throw new errs.ItemNotFoundError(thisData.id);
 		}
-		if (!skipMasking && typeof row.items !== "undefined" && row.items) {
+		if (!skipMasking) {
 			row = internalAccessList.maskItems(row);
 		}
 		// Custom omissions
@@ -266,6 +290,9 @@ const internalAccessList = {
 		await accessListModel.query().where("id", row.id).patch({
 			is_deleted: 1,
 		});
+
+		// 1b. detach OIDC providers (avoid orphaned access_list_oidc rows)
+		await accessListOidcModel.query().delete().where("access_list_id", row.id);
 
 		// 2. update any proxy hosts that were using it (ignoring permissions)
 		if (row.proxy_hosts) {
@@ -319,7 +346,7 @@ const internalAccessList = {
 			})
 			.where("access_list.is_deleted", 0)
 			.groupBy("access_list.id")
-			.allowGraph("[owner,items,clients]")
+			.allowGraph("[owner,items,clients,oidc_providers]")
 			.orderBy("access_list.name", "ASC");
 
 		if (accessData.permission_visibility !== "all") {
@@ -340,9 +367,7 @@ const internalAccessList = {
 		const rows = await query.then(utils.omitRows(omissions()));
 		if (rows) {
 			rows.map((row, idx) => {
-				if (typeof row.items !== "undefined" && row.items) {
-					rows[idx] = internalAccessList.maskItems(row);
-				}
+				rows[idx] = internalAccessList.maskItems(row);
 				return true;
 			});
 		}
@@ -387,7 +412,23 @@ const internalAccessList = {
 				return true;
 			});
 		}
-		return list;
+		// OIDC provider secrets are write-only: strip encrypted material from API output,
+		// including nested proxy_hosts[].access_list expansions.
+		let result = list;
+		if (result?.oidc_providers) {
+			result = internalOidcProvider.sanitizeForApi(result);
+		}
+		if (Array.isArray(result?.proxy_hosts)) {
+			result = {
+				...result,
+				proxy_hosts: result.proxy_hosts.map((proxyHost) =>
+					proxyHost?.access_list
+						? { ...proxyHost, access_list: internalOidcProvider.sanitizeForApi(proxyHost.access_list) }
+						: proxyHost,
+				),
+			};
+		}
+		return result;
 	},
 
 	/**

@@ -3,8 +3,10 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import _ from "lodash";
 import errs from "../lib/error.js";
+import { redactSecretsForLog } from "../lib/oidc.js";
 import utils from "../lib/utils.js";
 import { debug, nginx as logger } from "../logger.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,11 +194,28 @@ const internalNginx = {
 		const host = JSON.parse(JSON.stringify(host_row));
 		const nice_host_type = internalNginx.getFileFriendlyHostType(host_type);
 
-		debug(logger, `Generating ${nice_host_type} Config:`, JSON.stringify(host, null, 2));
+		// Hydrate OIDC providers for template rendering (decrypts client secrets).
+		// This must happen after the debug log below so secrets never reach logs.
+		const hostForLog = JSON.parse(JSON.stringify(host));
+		if (hostForLog.access_list) {
+			hostForLog.access_list = internalOidcProvider.sanitizeForApi(hostForLog.access_list);
+		}
+		debug(logger, `Generating ${nice_host_type} Config:`, JSON.stringify(hostForLog, null, 2));
 
 		const renderEngine = utils.getRenderEngine();
 
 		return new Promise((resolve, reject) => {
+			// Hydrate OIDC providers inside the promise so decryption failures
+			// reject the promise instead of throwing synchronously to .map
+			// callers in bulkGenerateConfigs.
+			try {
+				if (host.access_list) {
+					host.access_list = internalOidcProvider.hydrateForNginx(host.access_list);
+				}
+			} catch (err) {
+				reject(err);
+				return;
+			}
 			let template = null;
 			const filename = internalNginx.getConfigName(nice_host_type, host.id);
 
@@ -251,7 +270,8 @@ const internalNginx = {
 					.parseAndRender(template, host)
 					.then((config_text) => {
 						fs.writeFileSync(filename, config_text, { encoding: "utf8" });
-						debug(logger, "Wrote config:", filename, config_text);
+						// Never log OIDC client secrets that are embedded in the rendered config
+						debug(logger, "Wrote config:", filename, redactSecretsForLog(config_text));
 
 						// Restore locations array
 						host.locations = origLocations;

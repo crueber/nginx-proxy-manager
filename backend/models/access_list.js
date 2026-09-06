@@ -7,6 +7,7 @@ import { convertBoolFieldsToInt, convertIntFieldsToBool } from "../lib/helpers.j
 import AccessListAuth from "./access_list_auth.js";
 import AccessListClient from "./access_list_client.js";
 import now from "./now_helper.js";
+import OidcProvider from "./oidc_provider.js";
 import ProxyHostModel from "./proxy_host.js";
 import User from "./user.js";
 
@@ -78,6 +79,21 @@ class AccessList extends Model {
 				join: {
 					from: "access_list.id",
 					to: "access_list_client.access_list_id",
+				},
+			},
+			oidc_providers: {
+				relation: Model.ManyToManyRelation,
+				modelClass: OidcProvider,
+				join: {
+					from: "access_list.id",
+					through: {
+						from: "access_list_oidc.access_list_id",
+						to: "access_list_oidc.oidc_provider_id",
+					},
+					to: "oidc_provider.id",
+				},
+				modify: (qb) => {
+					qb.where("oidc_provider.is_deleted", 0).orderBy("oidc_provider.id", "ASC");
 				},
 			},
 			proxy_hosts: {

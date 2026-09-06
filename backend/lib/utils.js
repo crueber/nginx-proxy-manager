@@ -101,6 +101,19 @@ const getRenderEngine = () => {
 		return "";
 	});
 
+	/**
+	 * lua_string renders a value as a safely-escaped Lua double-quoted string,
+	 * for embedding provider settings (ids, secrets) into access_by_lua_block configs.
+	 */
+	renderEngine.registerFilter("lua_string", (v) => {
+		const escaped = String(v ?? "")
+			.replace(/\\/g, "\\\\")
+			.replace(/"/g, '\\"')
+			.replace(/\n/g, "\\n")
+			.replace(/\r/g, "\\r");
+		return `"${escaped}"`;
+	});
+
 	return renderEngine;
 };
 

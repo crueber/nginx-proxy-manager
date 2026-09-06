@@ -44,6 +44,13 @@
 						},
 						"clients": {
 							"$ref": "../../../../common.json#/properties/access_clients"
+						},
+						"oidc_provider_ids": {
+							"type": "array",
+							"description": "Attached OIDC providers (any-of semantics)",
+							"items": {
+								"$ref": "../../../../common.json#/properties/id"
+							}
 						}
 					}
 				},

@@ -1,0 +1,72 @@
+{
+	"operationId": "createOidcProvider",
+	"summary": "Create an OIDC Provider",
+	"tags": ["oidc-providers"],
+	"security": [
+		{
+			"bearerAuth": [
+				"access_lists.manage"
+			]
+		}
+	],
+	"requestBody": {
+		"description": "OIDC Provider Payload",
+		"required": true,
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"name",
+						"discovery_url",
+						"client_id"
+					],
+					"properties": {
+						"name": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/name"
+						},
+						"discovery_url": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/discovery_url"
+						},
+						"client_id": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/client_id"
+						},
+						"client_secret": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/client_secret"
+						},
+						"scopes": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/scopes"
+						},
+						"username_claim": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/username_claim"
+						},
+						"groups_claim": {
+							"$ref": "../../../components/oidc-provider-object.json#/properties/groups_claim"
+						}
+					}
+				},
+				"example": {
+					"name": "Keycloak",
+					"discovery_url": "https://auth.example.com/realms/npm",
+					"client_id": "npm",
+					"client_secret": "super-secret-value",
+					"scopes": "openid email profile",
+					"username_claim": "email"
+				}
+			}
+		}
+	},
+	"responses": {
+		"201": {
+			"description": "201 response",
+			"content": {
+				"application/json": {
+					"schema": {
+						"$ref": "../../../components/oidc-provider-object.json"
+					}
+				}
+			}
+		}
+	}
+}

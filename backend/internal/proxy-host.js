@@ -7,6 +7,7 @@ import internalAuditLog from "./audit-log.js";
 import internalCertificate from "./certificate.js";
 import internalHost from "./host.js";
 import internalNginx from "./nginx.js";
+import internalOidcProvider from "./oidc-provider.js";
 
 const omissions = () => {
 	return ["is_deleted", "owner.is_deleted"];
@@ -78,14 +79,23 @@ const internalProxyHost = {
 			})
 			.then((row) => {
 				// re-fetch with cert
-				return internalProxyHost.get(access, {
-					id: row.id,
-					expand: ["certificate", "owner", "access_list.[clients,items]"],
-				});
+				return internalProxyHost.get(
+					access,
+					{
+						id: row.id,
+						expand: ["certificate", "owner", "access_list.[clients,items,oidc_providers]"],
+					},
+					// Internal use: keep encrypted OIDC secrets for nginx config generation
+					true,
+				);
 			})
 			.then((row) => {
-				// Configure nginx
+				// Configure nginx (needs encrypted secrets), then strip them
+				// before the row goes back to API callers.
 				return internalNginx.configure(proxyHostModel, "proxy_host", row).then(() => {
+					if (row?.access_list) {
+						row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+					}
 					return row;
 				});
 			})
@@ -204,18 +214,30 @@ const internalProxyHost = {
 			})
 			.then(() => {
 				return internalProxyHost
-					.get(access, {
-						id: thisData.id,
-						expand: ["owner", "certificate", "access_list.[clients,items]"],
-					})
+					.get(
+						access,
+						{
+							id: thisData.id,
+							expand: ["owner", "certificate", "access_list.[clients,items,oidc_providers]"],
+						},
+						// Internal use: keep encrypted OIDC secrets for nginx config generation
+						true,
+					)
 					.then((row) => {
 						if (!row.enabled) {
 							// No need to add nginx config if host is disabled
+							if (row?.access_list) {
+								row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+							}
 							return row;
 						}
-						// Configure nginx
+						// Configure nginx (needs encrypted secrets), then strip them
+						// before the row goes back to API callers.
 						return internalNginx.configure(proxyHostModel, "proxy_host", row).then((new_meta) => {
 							row.meta = new_meta;
+							if (row?.access_list) {
+								row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+							}
 							return _.omit(internalHost.cleanRowCertificateMeta(row), omissions());
 						});
 					});
@@ -228,9 +250,12 @@ const internalProxyHost = {
 	 * @param  {Number}   data.id
 	 * @param  {Array}    [data.expand]
 	 * @param  {Array}    [data.omit]
+	 * @param  {Boolean}  [keepOidcSecrets]  Internal only: keep encrypted OIDC
+	 *                                       secrets for nginx config generation.
+	 *                                       Never set from API routes.
 	 * @return {Promise}
 	 */
-	get: (access, data) => {
+	get: (access, data, keepOidcSecrets = false) => {
 		const thisData = data || {};
 		return access
 			.can("proxy_hosts:get", thisData.id)
@@ -257,9 +282,14 @@ const internalProxyHost = {
 					throw new errs.ItemNotFoundError(thisData.id);
 				}
 				const thisRow = internalHost.cleanRowCertificateMeta(row);
+				// OIDC provider secrets are write-only: strip them from API-facing output
+				// unless the caller explicitly keeps them for nginx config generation.
+				if (!keepOidcSecrets && thisRow?.access_list) {
+					thisRow.access_list = internalOidcProvider.sanitizeForApi(thisRow.access_list);
+				}
 				// Custom omissions
 				if (typeof thisData.omit !== "undefined" && thisData.omit !== null) {
-					return _.omit(row, thisData.omit);
+					return _.omit(thisRow, thisData.omit);
 				}
 				return thisRow;
 			});
@@ -445,6 +475,13 @@ const internalProxyHost = {
 		}
 
 		const rows = await query.then(utils.omitRows(omissions()));
+		// OIDC provider secrets are write-only: strip them from API-facing output
+		rows.map((row, idx) => {
+			if (row?.access_list) {
+				rows[idx].access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+			}
+			return true;
+		});
 		if (typeof expand !== "undefined" && expand !== null && expand.indexOf("certificate") !== -1) {
 			return internalHost.cleanAllRowsCertificateMeta(rows);
 		}

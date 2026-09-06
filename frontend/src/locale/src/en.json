@@ -284,6 +284,9 @@
 	"column.name": {
 		"defaultMessage": "Name"
 	},
+	"column.oidc-providers": {
+		"defaultMessage": "OIDC Providers"
+	},
 	"column.protocol": {
 		"defaultMessage": "Protocol"
 	},
@@ -384,7 +387,7 @@
 		"defaultMessage": "Enabled"
 	},
 	"error.access.at-least-one": {
-		"defaultMessage": "Either one Authorization or one Access Rule is required"
+		"defaultMessage": "Either one Authorization, one Access Rule or one OIDC Provider is required"
 	},
 	"error.access.duplicate-usernames": {
 		"defaultMessage": "Authorization Usernames must be unique"
@@ -566,6 +569,54 @@
 	"offline": {
 		"defaultMessage": "Offline"
 	},
+	"oidc-provider": {
+		"defaultMessage": "OIDC Provider"
+	},
+	"oidc-provider.client-id": {
+		"defaultMessage": "Client ID"
+	},
+	"oidc-provider.client-secret": {
+		"defaultMessage": "Client Secret"
+	},
+	"oidc-provider.client-secret.placeholder": {
+		"defaultMessage": "Leave blank to keep the stored secret"
+	},
+	"oidc-provider.discovery-url": {
+		"defaultMessage": "Discovery / Issuer URL"
+	},
+	"oidc-provider.groups-claim": {
+		"defaultMessage": "Groups Claim (optional)"
+	},
+	"oidc-provider.scopes": {
+		"defaultMessage": "Scopes"
+	},
+	"oidc-provider.secret-set": {
+		"defaultMessage": "Secret stored"
+	},
+	"oidc-provider.test": {
+		"defaultMessage": "Test Connection"
+	},
+	"oidc-provider.test-failed": {
+		"defaultMessage": "Discovery check failed"
+	},
+	"oidc-provider.test-ok": {
+		"defaultMessage": "Discovery reachable: {issuer}"
+	},
+	"oidc-provider.username-claim": {
+		"defaultMessage": "Username Claim"
+	},
+	"oidc-providers": {
+		"defaultMessage": "OIDC Providers"
+	},
+	"oidc-providers.any-of": {
+		"defaultMessage": "Attached providers are tried in order; Basic Auth still works when both are set (OR semantics)"
+	},
+	"oidc-providers.empty": {
+		"defaultMessage": "No OIDC providers configured yet. Add one in Settings."
+	},
+	"oidc-providers.open-settings": {
+		"defaultMessage": "Open OIDC Settings"
+	},
 	"online": {
 		"defaultMessage": "Online"
 	},
@@ -688,6 +739,9 @@
 	},
 	"settings.default-site.redirect": {
 		"defaultMessage": "Redirect"
+	},
+	"settings.oidc-providers": {
+		"defaultMessage": "OIDC Providers"
 	},
 	"setup.preamble": {
 		"defaultMessage": "Get started by creating your admin account."
