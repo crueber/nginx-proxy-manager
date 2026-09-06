@@ -30,10 +30,12 @@ Edit an Access List and open the **OIDC Providers** tab (shown only when at leas
 one provider exists; otherwise the Authorizations tab links to Settings). Attach one
 or more providers, which are tried in order with first success winning.
 
-Limitation: an unauthenticated request is redirected by the **first** attached
-provider, so the initial login always goes through it; later providers serve as
-fallback. A true multi-provider chooser (per-provider login links) is a future
-enhancement.
+By design there is no per-provider login chooser: an unauthenticated request is
+redirected by the **first** attached provider (redirect-and-exit), so the initial
+login always goes through it; later providers serve as fallback for flows where
+authentication returns instead of redirecting. A provider either redirects back
+with credentials (access granted) or the chain continues on failure; if every
+attached provider fails, the request gets a 401.
 
 Enforcement semantics:
 
