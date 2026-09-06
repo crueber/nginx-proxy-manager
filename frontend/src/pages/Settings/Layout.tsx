@@ -3,16 +3,13 @@ import { useState } from "react";
 import { T } from "src/locale";
 import DefaultSite from "./DefaultSite";
 import OidcProviders from "./OidcProviders";
-
-type Tab = "default-site" | "oidc-providers";
-
-const OIDC_HASH = "#oidc-providers";
+import { settingsHashForTab, settingsTabFromHash, type SettingsTab } from "./tabs";
 
 // The Access List modal links here as `/settings#oidc-providers` when no
 // providers exist yet, so honor the hash on load.
-function initialTab(): Tab {
-	if (typeof window !== "undefined" && window.location.hash === OIDC_HASH) {
-		return "oidc-providers";
+function initialTab(): SettingsTab {
+	if (typeof window !== "undefined") {
+		return settingsTabFromHash(window.location.hash);
 	}
 	return "default-site";
 }
@@ -20,16 +17,16 @@ function initialTab(): Tab {
 export default function Layout() {
 	// Taken from https://preview.tabler.io/settings.html
 	// Refer to that when updating this content
-	const [tab, setTab] = useState<Tab>(initialTab);
+	const [tab, setTab] = useState<SettingsTab>(initialTab);
 
-	const selectTab = (id: Tab) => {
+	const selectTab = (id: SettingsTab) => {
 		setTab(id);
 		if (typeof window !== "undefined") {
-			window.location.hash = id === "oidc-providers" ? OIDC_HASH : "";
+			window.location.hash = settingsHashForTab(id);
 		}
 	};
 
-	const navItem = (id: Tab, labelId: string) => (
+	const navItem = (id: SettingsTab, labelId: string) => (
 		<a
 			href="#"
 			className={cn("list-group-item list-group-item-action d-flex align-items-center", { active: tab === id })}
