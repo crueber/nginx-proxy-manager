@@ -90,8 +90,12 @@ const internalProxyHost = {
 				);
 			})
 			.then((row) => {
-				// Configure nginx
+				// Configure nginx (needs encrypted secrets), then strip them
+				// before the row goes back to API callers.
 				return internalNginx.configure(proxyHostModel, "proxy_host", row).then(() => {
+					if (row?.access_list) {
+						row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+					}
 					return row;
 				});
 			})
@@ -222,11 +226,18 @@ const internalProxyHost = {
 					.then((row) => {
 						if (!row.enabled) {
 							// No need to add nginx config if host is disabled
+							if (row?.access_list) {
+								row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+							}
 							return row;
 						}
-						// Configure nginx
+						// Configure nginx (needs encrypted secrets), then strip them
+						// before the row goes back to API callers.
 						return internalNginx.configure(proxyHostModel, "proxy_host", row).then((new_meta) => {
 							row.meta = new_meta;
+							if (row?.access_list) {
+								row.access_list = internalOidcProvider.sanitizeForApi(row.access_list);
+							}
 							return _.omit(internalHost.cleanRowCertificateMeta(row), omissions());
 						});
 					});
