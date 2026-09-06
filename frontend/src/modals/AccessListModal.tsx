@@ -4,10 +4,11 @@ import { Field, Form, Formik } from "formik";
 import { type ReactNode, useState } from "react";
 import { Alert } from "react-bootstrap";
 import Modal from "react-bootstrap/Modal";
-import type { AccessList, AccessListClient, AccessListItem } from "src/api/backend";
+import type { AccessList, AccessListClient, AccessListItem, OidcProvider } from "src/api/backend";
 import { AccessClientFields, BasicAuthFields, Button, Loading } from "src/components";
-import { useAccessList, useSetAccessList } from "src/hooks";
+import { useAccessList, useOidcProviders, useSetAccessList } from "src/hooks";
 import { intl, T } from "src/locale";
+import { initialOidcProviders, toOidcProviderIds } from "src/modules/Oidc";
 import { validateString } from "src/modules/Validations";
 import { showObjectSuccess } from "src/notifications";
 
@@ -19,14 +20,15 @@ interface Props extends InnerModalProps {
 	id: number | "new";
 }
 const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
-	const { data, isLoading, error } = useAccessList(id, ["items", "clients"]);
+	const { data, isLoading, error } = useAccessList(id, ["items", "clients", "oidc_providers"]);
+	const { data: oidcProviders } = useOidcProviders();
 	const { mutate: setAccessList } = useSetAccessList();
 	const [errorMsg, setErrorMsg] = useState<ReactNode | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const validate = (values: any): string | null => {
-		// either Auths or Clients must be defined
-		if (values.items?.length === 0 && values.clients?.length === 0) {
+		// either Auths, Clients or OIDC providers must be defined
+		if (values.items?.length === 0 && values.clients?.length === 0 && values.oidcProviderIds?.length === 0) {
 			return intl.formatMessage({ id: "error.access.at-least-one" });
 		}
 
@@ -69,6 +71,9 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 			address: i.address,
 		}));
 
+		// Attach OIDC providers by id (any-of semantics; empty detaches all)
+		payload.oidcProviderIds = [...new Set((values.oidcProviderIds || []).filter((pid: number) => pid > 0))];
+
 		setAccessList(payload, {
 			onError: (err: any) => setErrorMsg(<T id={err.message} />),
 			onSuccess: () => {
@@ -84,6 +89,7 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 
 	const toggleClasses = "form-check-input";
 	const toggleEnabled = cn(toggleClasses, "bg-cyan");
+	const hasOidcProviders = (oidcProviders?.length || 0) > 0;
 
 	return (
 		<Modal show={visible} onHide={remove}>
@@ -102,11 +108,12 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 							passAuth: data?.passAuth,
 							items: data?.items || [],
 							clients: data?.clients || [],
+							oidcProviderIds: toOidcProviderIds(initialOidcProviders(data)),
 						} as AccessList
 					}
 					onSubmit={onSubmit}
 				>
-					{({ setFieldValue }: any) => (
+					{({ setFieldValue, values }: any) => (
 						<Form>
 							<Modal.Header closeButton>
 								<Modal.Title>
@@ -155,6 +162,20 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 													<T id="column.rules" />
 												</a>
 											</li>
+											{hasOidcProviders && (
+												<li className="nav-item" role="presentation">
+													<a
+														href="#tab-oidc"
+														className="nav-link"
+														data-bs-toggle="tab"
+														aria-selected="false"
+														tabIndex={-1}
+														role="tab"
+													>
+														<T id="column.oidc-providers" />
+													</a>
+												</li>
+											)}
 										</ul>
 									</div>
 									<div className="card-body">
@@ -258,10 +279,47 @@ const AccessListModal = EasyModal.create(({ id, visible, remove }: Props) => {
 											</div>
 											<div className="tab-pane" id="tab-auth" role="tabpanel">
 												<BasicAuthFields initialValues={data?.items || []} />
+												{!hasOidcProviders && (
+													<div className="mt-3 text-muted">
+														<T id="oidc-providers.empty" />{" "}
+														<a href="/settings">
+															<T id="oidc-providers.open-settings" />
+														</a>
+													</div>
+												)}
 											</div>
 											<div className="tab-pane" id="tab-rules" role="tabpanel">
 												<AccessClientFields initialValues={data?.clients || []} />
 											</div>
+											{hasOidcProviders && (
+												<div className="tab-pane" id="tab-oidc" role="tabpanel">
+													<p className="text-muted">
+														<T id="oidc-providers.any-of" />
+													</p>
+													{(oidcProviders || []).map((provider: OidcProvider) => (
+														<label className="form-check" key={provider.id}>
+															<input
+																className="form-check-input"
+																type="checkbox"
+																checked={(values.oidcProviderIds || []).includes(provider.id)}
+																onChange={(e: any) => {
+																	const current: number[] = values.oidcProviderIds || [];
+																	setFieldValue(
+																		"oidcProviderIds",
+																		e.target.checked
+																			? [...current, provider.id]
+																			: current.filter((pid: number) => pid !== provider.id),
+																	);
+																}}
+															/>
+															<span className="form-check-label">
+																{provider.name}
+																<span className="text-muted"> — {provider.discoveryUrl}</span>
+															</span>
+														</label>
+													))}
+												</div>
+											)}
 										</div>
 									</div>
 								</div>

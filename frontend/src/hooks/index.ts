@@ -10,6 +10,8 @@ export * from "./useDeadHosts";
 export * from "./useDnsProviders";
 export * from "./useHealth";
 export * from "./useHostReport";
+export * from "./useOidcProvider";
+export * from "./useOidcProviders";
 export * from "./useProxyHost";
 export * from "./useProxyHosts";
 export * from "./useRedirectionHost";

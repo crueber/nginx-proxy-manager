@@ -58,6 +58,27 @@ export interface AccessList {
 	owner?: User;
 	items?: AccessListItem[];
 	clients?: AccessListClient[];
+	oidcProviders?: OidcProvider[];
+	// Association payload (write-only, sent as oidc_provider_ids):
+	oidcProviderIds?: number[];
+}
+
+export interface OidcProvider {
+	id?: number;
+	createdOn?: string;
+	modifiedOn?: string;
+	ownerUserId?: number;
+	name: string;
+	discoveryUrl: string;
+	clientId: string;
+	// Write-only: supply to set or rotate the secret. Never returned by the API.
+	clientSecret?: string;
+	// Read-only indicator: true when a secret is stored.
+	hasSecret?: boolean;
+	scopes?: string;
+	usernameClaim?: string;
+	groupsClaim?: string | null;
+	meta?: Record<string, any>;
 }
 
 export interface AccessListItem {
